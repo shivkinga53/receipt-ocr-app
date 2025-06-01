@@ -51,11 +51,11 @@ if (!apiKey) {
 	console.error("FATAL ERROR: GOOGLE_API_KEY is not defined in .env file.");
 	process.exit(1);
 }
-const genAI = new GoogleGenAI({ apiKey }); // Updated initialization
+const genAI = new GoogleGenAI({ apiKey });
 
 app.listen(PORT, async () => {
 	console.log(`Server running in ESM mode on http://localhost:${PORT}`);
-	const filePath = "bart_20180908_007.pdf";
+	const filePath = "caltrain-425345423423.pdf";
 
 	const file = await genAI.files.upload({
 		file: filePath,
@@ -65,7 +65,13 @@ app.listen(PORT, async () => {
 
 	// Prepare a prompt to extract key details from the receipt
 	const prompt =
-		"\nExtract vendor, date (yyyy-MM-dd format), total and item details from this receipt. and give it in json format.";
+		`\nExtract vendor, date (yyyy-MM-dd HH:mm:ss format), total and item details from this receipt. and give it in json format in this format 
+        {
+            "merchant_name": "Example Store",
+            "purchased_at": "2023-10-26 14:30:00",
+            "total_amount": 123.45
+        }.
+    `;
 	const content = createUserContent([
 		createPartFromUri(file.uri, file.mimeType),
 		prompt,
