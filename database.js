@@ -1,7 +1,6 @@
 // database.js
 import sqlite3 from 'sqlite3';
 const sqlite = sqlite3.verbose();
-
 const DB_PATH = './receipts.db';
 
 const db = new sqlite.Database(DB_PATH, (err) => {
@@ -15,6 +14,21 @@ const db = new sqlite.Database(DB_PATH, (err) => {
         initializeDb();
     }
 });
+
+/**
+ * Initializes the SQLite database by creating necessary tables
+ * and triggers if they do not already exist. This includes:
+ * - `receipt_file` table: stores metadata of uploaded receipt files
+ *   with fields such as file name, file path, validation status, 
+ *   processing status, and timestamps.
+ * - `receipt` table: stores extracted information from valid receipt
+ *   files with fields such as purchase date, merchant name, total 
+ *   amount, associated file path, and raw extracted text.
+ * - Triggers are also created to update the `updated_at` timestamp
+ *   whenever a record in either table is updated.
+ * 
+ * Logs errors to the console if table creation fails.
+ */
 
 const initializeDb = () => {
     db.serialize(() => {
@@ -71,3 +85,69 @@ const initializeDb = () => {
         `);
     });
 };
+
+/**
+ * Runs a SQL query with optional parameters and returns a Promise that resolves
+ * with the result of the query or rejects with an error.
+ *
+ * @param {string} sql - The SQL query to run.
+ * @param {array} [params=[]] - Parameters to pass to the query.
+ * @returns {Promise} - A Promise that resolves with the result of the query or rejects with an error.
+ */
+const dbRun = (sql, params = []) => {
+    return new Promise((resolve, reject) => {
+        db.run(sql, params, function (err) { // Use 'function' for 'this' context
+            if (err) {
+                console.error('DB Run Error:', err.message, 'SQL:', sql, 'Params:', params);
+                reject(err);
+            } else {
+                resolve(this); // 'this' contains lastID, changes
+            }
+        });
+    });
+};
+
+/**
+ * Runs a SQL query with optional parameters and returns a Promise that resolves
+ * with the first row of the query result or rejects with an error.
+ *
+ * @param {string} sql - The SQL query to run.
+ * @param {array} [params=[]] - Parameters to pass to the query.
+ * @returns {Promise} - A Promise that resolves with the first row of the query result or rejects with an error.
+ */
+const dbGet = (sql, params = []) => {
+    return new Promise((resolve, reject) => {
+        db.get(sql, params, (err, row) => {
+            if (err) {
+                console.error('DB Get Error:', err.message, 'SQL:', sql, 'Params:', params);
+                reject(err);
+            } else {
+                resolve(row);
+            }
+        });
+    });
+};
+
+/**
+ * Runs a SQL query with optional parameters and returns a Promise that resolves
+ * with all rows of the query result or rejects with an error.
+ *
+ * @param {string} sql - The SQL query to run.
+ * @param {array} [params=[]] - Parameters to pass to the query.
+ * @returns {Promise} - A Promise that resolves with all rows of the query result or rejects with an error.
+ */
+
+const dbAll = (sql, params = []) => {
+    return new Promise((resolve, reject) => {
+        db.all(sql, params, (err, rows) => {
+            if (err) {
+                console.error('DB All Error:', err.message, 'SQL:', sql, 'Params:', params);
+                reject(err);
+            } else {
+                resolve(rows);
+            }
+        });
+    });
+};
+
+export { db, dbRun, dbGet, dbAll };
