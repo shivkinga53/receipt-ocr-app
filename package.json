@@ -1,0 +1,32 @@
+{
+	"name": "receipt-ocr-app",
+	"version": "1.0.0",
+	"description": "This assessment is designed to evaluate your ability to build a system for processing scanned receipts automatically. The goal is to extract relevant details from PDF receipts using OCR/AI techniques and store the extracted data in a structured format.",
+	"main": "server.js",
+	"scripts": {
+		"start": "node server.js",
+		"dev": "nodemon server.js"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/shivkinga53/receipt-ocr-app.git"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"type": "module",
+	"bugs": {
+		"url": "https://github.com/shivkinga53/receipt-ocr-app/issues"
+	},
+	"homepage": "https://github.com/shivkinga53/receipt-ocr-app#readme",
+	"dependencies": {
+		"@google/genai": "^1.3.0",
+		"cors": "^2.8.5",
+		"dotenv": "^16.5.0",
+		"express": "^5.1.0",
+		"multer": "^2.0.0",
+		"nodemon": "^3.1.10",
+		"sqlite": "^5.1.1",
+		"sqlite3": "^5.1.7"
+	}
+}
