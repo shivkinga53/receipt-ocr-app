@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Receipt Processor</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Receipt Processor</h1>
+
+    <section id="upload-section">
+        <h2>1. Upload Receipt PDF</h2>
+        <form id="uploadForm">
+            <input type="file" id="receiptFile" name="receiptPdf" accept="application/pdf" required>
+            <button type="submit">Upload</button>
+        </form>
+        <div id="uploadStatus"></div>
+    </section>
+
+    <section id="files-section">
+        <h2>2. Manage Uploaded Files</h2>
+        <button id="refreshFiles">Refresh File List</button>
+        <table id="filesTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>File Name</th>
+                    <th>Status</th>
+                    <th>Processed</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- File rows will be inserted here -->
+            </tbody>
+        </table>
+        <div id="fileActionStatus"></div>
+    </section>
+
+    <section id="receipts-section">
+        <h2>3. Processed Receipts</h2>
+        <button id="refreshReceipts">Refresh Processed Receipts</button>
+        <table id="receiptsTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Merchant</th>
+                    <th>Date</th>
+                    <th>Amount</th>
+                    <th>Original File</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Receipt rows will be inserted here -->
+            </tbody>
+        </table>
+    </section>
+
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">×</span>
+            <h2>Receipt Details</h2>
+            <pre id="modalData"></pre>
+        </div>
+    </div>
+    
+
+    <script src="script.js"></script>
+</body>
+</html>
