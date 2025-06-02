@@ -6,29 +6,12 @@ const DB_PATH = './receipts.db';
 const db = new sqlite.Database(DB_PATH, (err) => {
     if (err) {
         console.error('Error opening database', err.message);
-        // If the DB can't be opened, the app is likely unusable.
-        // Consider exiting or implementing a retry mechanism for robust applications.
         process.exit(1);
     } else {
         console.log('Connected to the SQLite database.');
         initializeDb();
     }
 });
-
-/**
- * Initializes the SQLite database by creating necessary tables
- * and triggers if they do not already exist. This includes:
- * - `receipt_file` table: stores metadata of uploaded receipt files
- *   with fields such as file name, file path, validation status, 
- *   processing status, and timestamps.
- * - `receipt` table: stores extracted information from valid receipt
- *   files with fields such as purchase date, merchant name, total 
- *   amount, associated file path, and raw extracted text.
- * - Triggers are also created to update the `updated_at` timestamp
- *   whenever a record in either table is updated.
- * 
- * Logs errors to the console if table creation fails.
- */
 
 const initializeDb = () => {
     db.serialize(() => {
@@ -48,6 +31,9 @@ const initializeDb = () => {
             else console.log("receipt_file table checked/created.");
         });
 
+        // ─────────────────────────────────────────────────────────────────────────────
+        // Modified: add an `items` column of type TEXT to store JSON
+        // ─────────────────────────────────────────────────────────────────────────────
         db.run(`
             CREATE TABLE IF NOT EXISTS receipt (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,6 +41,8 @@ const initializeDb = () => {
                 purchased_at DATETIME,
                 merchant_name TEXT,
                 total_amount REAL,
+                category TEXT,
+                items TEXT,                     -- new column to store JSON array of items
                 file_path TEXT,
                 raw_extracted_text TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -66,7 +54,7 @@ const initializeDb = () => {
             else console.log("receipt table checked/created.");
         });
 
-        // Triggers (keep as is, they are fine)
+        // Triggers to update updated_at timestamps
         db.run(`
             CREATE TRIGGER IF NOT EXISTS update_receipt_file_updated_at
             AFTER UPDATE ON receipt_file
@@ -75,6 +63,7 @@ const initializeDb = () => {
                 UPDATE receipt_file SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
             END;
         `);
+
         db.run(`
             CREATE TRIGGER IF NOT EXISTS update_receipt_updated_at
             AFTER UPDATE ON receipt
@@ -86,35 +75,19 @@ const initializeDb = () => {
     });
 };
 
-/**
- * Runs a SQL query with optional parameters and returns a Promise that resolves
- * with the result of the query or rejects with an error.
- *
- * @param {string} sql - The SQL query to run.
- * @param {array} [params=[]] - Parameters to pass to the query.
- * @returns {Promise} - A Promise that resolves with the result of the query or rejects with an error.
- */
 const dbRun = (sql, params = []) => {
     return new Promise((resolve, reject) => {
-        db.run(sql, params, function (err) { // Use 'function' for 'this' context
+        db.run(sql, params, function (err) {
             if (err) {
                 console.error('DB Run Error:', err.message, 'SQL:', sql, 'Params:', params);
                 reject(err);
             } else {
-                resolve(this); // 'this' contains lastID, changes
+                resolve(this); // contains lastID, changes
             }
         });
     });
 };
 
-/**
- * Runs a SQL query with optional parameters and returns a Promise that resolves
- * with the first row of the query result or rejects with an error.
- *
- * @param {string} sql - The SQL query to run.
- * @param {array} [params=[]] - Parameters to pass to the query.
- * @returns {Promise} - A Promise that resolves with the first row of the query result or rejects with an error.
- */
 const dbGet = (sql, params = []) => {
     return new Promise((resolve, reject) => {
         db.get(sql, params, (err, row) => {
@@ -127,15 +100,6 @@ const dbGet = (sql, params = []) => {
         });
     });
 };
-
-/**
- * Runs a SQL query with optional parameters and returns a Promise that resolves
- * with all rows of the query result or rejects with an error.
- *
- * @param {string} sql - The SQL query to run.
- * @param {array} [params=[]] - Parameters to pass to the query.
- * @returns {Promise} - A Promise that resolves with all rows of the query result or rejects with an error.
- */
 
 const dbAll = (sql, params = []) => {
     return new Promise((resolve, reject) => {

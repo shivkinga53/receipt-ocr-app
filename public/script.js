@@ -1,196 +1,507 @@
-// public/script.js
+// script.js
+
 document.addEventListener('DOMContentLoaded', () => {
-    const uploadForm = document.getElementById('uploadForm');
-    const receiptFile = document.getElementById('receiptFile');
-    const uploadStatus = document.getElementById('uploadStatus');
-    const fileActionStatus = document.getElementById('fileActionStatus');
+  // ─── DOM ELEMENTS ─────────────────────────────────────────
+  const loaderOverlay       = document.getElementById('loaderOverlay');
+  const uploadForm          = document.getElementById('uploadForm');
+  const receiptFileInput    = document.getElementById('receiptFile');
+  const uploadStatus        = document.getElementById('uploadStatus');
+  const fileActionStatus    = document.getElementById('fileActionStatus');
 
-    const filesTableBody = document.querySelector('#filesTable tbody');
-    const receiptsTableBody = document.querySelector('#receiptsTable tbody');
-    
-    const refreshFilesButton = document.getElementById('refreshFiles');
-    const refreshReceiptsButton = document.getElementById('refreshReceipts');
+  const filesTableBody      = document.querySelector('#filesTable tbody');
+  const receiptsTableBody   = document.querySelector('#receiptsTable tbody');
 
-    const modal = document.getElementById('modal');
-    const modalData = document.getElementById('modalData');
-    const closeButton = document.querySelector('.close-button');
+  const refreshFilesButton    = document.getElementById('refreshFiles');
+  const refreshReceiptsButton = document.getElementById('refreshReceipts');
 
-    // --- Utility Functions ---
-    function showStatus(element, message, isSuccess) {
-        element.textContent = message;
-        element.className = isSuccess ? 'status-success' : 'status-error';
+  const filesSearchInput      = document.getElementById('filesSearchInput');
+  const receiptsSearchInput   = document.getElementById('receiptsSearchInput');
+
+  const modalElem           = document.getElementById('modal');
+  const modalSummary        = document.getElementById('modalSummary');
+  const modalData           = document.getElementById('modalData');
+  const itemsTableContainer = document.getElementById('itemsTableContainer');
+
+  const themeToggle         = document.getElementById('themeToggle');
+
+  let bootstrapModalInstance = new bootstrap.Modal(modalElem);
+
+  // ─── HELPER: Show / Hide Loader ────────────────────────────
+  function showLoader() {
+    loaderOverlay.classList.add('show');
+  }
+  function hideLoader() {
+    loaderOverlay.classList.remove('show');
+  }
+
+  // ─── HELPER: display a temporary Bootstrap alert in the given element.
+  //      (8‐second duration)
+  function showStatus(element, message, isSuccess) {
+    const alertType = isSuccess ? 'success' : 'danger';
+    element.innerHTML = `<div class="alert alert-${alertType}">${message}</div>`;
+    setTimeout(() => {
+      element.innerHTML = '';
+    }, 8000);
+  }
+
+  // ─── UPDATE URL HASH WHEN TABS CHANGE ─────────────────────
+  document.querySelectorAll('button[data-bs-toggle="tab"]').forEach((tabBtn) => {
+    tabBtn.addEventListener('shown.bs.tab', (e) => {
+      let newHash = '';
+      switch (e.target.id) {
+        case 'upload-tab':   newHash = '#upload';    break;
+        case 'files-tab':    newHash = '#files';     break;
+        case 'receipts-tab': newHash = '#receipts';  break;
+      }
+      if (newHash) {
+        history.replaceState(null, null, newHash);
+      }
+    });
+  });
+
+  // ─── ACTIVATE CORRECT TAB BASED ON window.location.hash ────
+  function activateTabFromHash() {
+    const hash = window.location.hash;
+    if (hash === '#files') {
+      new bootstrap.Tab(document.getElementById('files-tab')).show();
+    } else if (hash === '#receipts') {
+      new bootstrap.Tab(document.getElementById('receipts-tab')).show();
+    } else {
+      new bootstrap.Tab(document.getElementById('upload-tab')).show();
+    }
+  }
+  activateTabFromHash();
+
+  // ─── THEME TOGGLE ──────────────────────────────────────────
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-bs-theme', theme);
+    themeToggle.checked = (theme === 'dark');
+  }
+  // On load, read localStorage
+  const savedTheme = localStorage.getItem('theme');
+  applyTheme(savedTheme === 'dark' ? 'dark' : 'light');
+  themeToggle.addEventListener('change', () => {
+    const newTheme = themeToggle.checked ? 'dark' : 'light';
+    applyTheme(newTheme);
+    localStorage.setItem('theme', newTheme);
+  });
+
+  // ─── UPLOAD FORM HANDLER (no page reload) ─────────────────
+  uploadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const uploadBtn = uploadForm.querySelector('button[type="submit"]');
+    if (!receiptFileInput.files[0]) {
+      showStatus(uploadStatus, 'Please select a PDF first.', false);
+      return;
     }
 
-    // --- Event Listeners ---
-    uploadForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const formData = new FormData();
-        formData.append('receiptPdf', receiptFile.files[0]);
+    // Disable input & button, show loader
+    receiptFileInput.disabled = true;
+    uploadBtn.disabled = true;
+    showLoader();
+    showStatus(uploadStatus, 'Uploading…', true);
 
-        showStatus(uploadStatus, 'Uploading...', true);
+    try {
+      const formData = new FormData();
+      formData.append('receiptPdf', receiptFileInput.files[0]);
+
+      const response = await fetch('http://127.0.0.1:3000/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || 'Upload failed.');
+      }
+      showStatus(
+        uploadStatus,
+        `✔️ ${result.message} (File ID: ${result.fileId})`,
+        true
+      );
+      receiptFileInput.value = '';
+      await loadFiles(); // reload only the Files table
+    } catch (error) {
+      showStatus(uploadStatus, `❌ ${error.message}`, false);
+    } finally {
+      hideLoader();
+      receiptFileInput.disabled = false;
+      uploadBtn.disabled = false;
+    }
+  });
+
+  // ─── REFRESH BUTTONS ───────────────────────────────────────
+  refreshFilesButton.addEventListener('click', loadFiles);
+  refreshReceiptsButton.addEventListener('click', loadReceipts);
+
+  // ─── FETCH & RENDER FILES (no page reload) ─────────────────
+  async function loadFiles() {
+    // Disable Refresh Files button
+    refreshFilesButton.disabled = true;
+    showLoader();
+    showStatus(fileActionStatus, 'Loading files…', true);
+
+    try {
+      const response = await fetch('http://127.0.0.1:3000/api/files');
+      if (!response.ok) throw new Error('Failed to fetch files.');
+      const files = await response.json();
+
+      filesTableBody.innerHTML = '';
+      if (files.length === 0) {
+        filesTableBody.innerHTML =
+          '<tr><td colspan="6" class="text-center">No files uploaded yet.</td></tr>';
+        showStatus(fileActionStatus, 'No files found.', true);
+        return;
+      }
+
+      files.forEach((file) => {
+        const row = filesTableBody.insertRow();
+        const downloadUrl = `http://127.0.0.1:3000/${file.file_path}`;
+        row.innerHTML = `
+          <td>${file.id}</td>
+          <td>${file.file_name}</td>
+          <td>${file.is_valid ? 'Valid PDF' : (file.invalid_reason || 'Not Validated')}</td>
+          <td>${file.is_processed ? 'Yes' : 'No'}</td>
+          <td>
+            <a href="${downloadUrl}" target="_blank" class="btn btn-sm btn-outline-primary">
+              Download
+            </a>
+          </td>
+          <td>
+            <button
+              class="btn btn-sm btn-primary validate-btn"
+              data-id="${file.id}"
+              ${file.is_valid ? 'disabled' : ''}
+              type="button"
+            >
+              Validate
+            </button>
+            <button
+              class="btn btn-sm btn-success process-btn"
+              data-id="${file.id}"
+              ${(!file.is_valid || file.is_processed) ? 'disabled' : ''}
+              type="button"
+            >
+              Process
+            </button>
+          </td>
+        `;
+      });
+
+      showStatus(fileActionStatus, 'Files loaded.', true);
+      attachActionListeners();
+    } catch (error) {
+      showStatus(
+        fileActionStatus,
+        `Error loading files: ${error.message}`,
+        false
+      );
+      filesTableBody.innerHTML =
+        '<tr><td colspan="6" class="text-center text-danger">Error loading files.</td></tr>';
+    } finally {
+      hideLoader();
+      refreshFilesButton.disabled = false;
+    }
+  }
+
+  // ─── FETCH & RENDER RECEIPTS (no page reload) ───────────────
+  async function loadReceipts() {
+    // Disable Refresh Receipts button
+    refreshReceiptsButton.disabled = true;
+    showLoader();
+
+    try {
+      const response = await fetch('http://127.0.0.1:3000/api/receipts');
+      if (!response.ok) throw new Error('Failed to fetch receipts.');
+      const receipts = await response.json();
+
+      receiptsTableBody.innerHTML = '';
+      if (receipts.length === 0) {
+        receiptsTableBody.innerHTML =
+          '<tr><td colspan="7" class="text-center">No receipts processed yet.</td></tr>';
+        return;
+      }
+
+      receipts.forEach((receipt) => {
+        const row = receiptsTableBody.insertRow();
+        const purchasedDate = receipt.purchased_at
+          ? new Date(receipt.purchased_at).toLocaleString()
+          : 'N/A';
+        const downloadUrl = `http://127.0.0.1:3000/${receipt.file_path}`;
+        console.log(receipt);
+        
+        row.innerHTML = `
+          <td>${receipt.id}</td>
+          <td>${receipt.merchant_name || 'N/A'}</td>
+          <td>${purchasedDate}</td>
+          <td>${receipt.total_amount !== null
+            ? receipt.total_amount.toFixed(2)
+            : 'N/A'}</td>
+          <td>
+            <a href="${downloadUrl}" target="_blank" class="btn btn-sm btn-outline-primary">
+              Download
+            </a>
+          </td>
+          <td>
+            <button
+              class="btn btn-sm btn-outline-secondary view-details-btn"
+              data-id="${receipt.id}"
+              type="button"
+            >
+              Details
+            </button>
+          </td>
+          <td>
+            <button
+              class="btn btn-sm btn-danger delete-receipt-btn"
+              data-id="${receipt.id}"
+              type="button"
+            >
+              Delete
+            </button>
+          </td>
+        `;
+      });
+
+      attachReceiptActionListeners();
+      attachDeleteListeners();
+    } catch (error) {
+      console.error('Error loading receipts:', error);
+      receiptsTableBody.innerHTML =
+        '<tr><td colspan="7" class="text-center text-danger">Error loading receipts.</td></tr>';
+    } finally {
+      hideLoader();
+      refreshReceiptsButton.disabled = false;
+    }
+  }
+
+  // ─── ATTACH VALIDATE / PROCESS LISTENERS FOR FILES ────────
+  function attachActionListeners() {
+    document.querySelectorAll('.validate-btn').forEach((button) => {
+      button.addEventListener('click', async (e) => {
+        const validateBtn = e.target;
+        const fileId = validateBtn.dataset.id;
+
+        showLoader();
+        showStatus(fileActionStatus, `Validating file #${fileId}…`, true);
+        validateBtn.disabled = true;
 
         try {
-            const response = await fetch('http://127.0.0.1:3000/api/upload', {
-                method: 'POST',
-                body: formData,
-            });
-            const result = await response.json();
-            if (!response.ok) {
-                throw new Error(result.message || 'Upload failed');
-            }
-            showStatus(uploadStatus, `Success: ${result.message} (File ID: ${result.fileId})`, true);
-            receiptFile.value = ''; // Clear file input
-            loadFiles(); // Refresh file list
+          const response = await fetch(
+            `http://127.0.0.1:3000/api/validate/${fileId}`,
+            { method: 'POST' }
+          );
+          const result = await response.json();
+          if (!response.ok) {
+            throw new Error(result.message || `Validation failed for ${fileId}`);
+          }
+
+          showStatus(
+            fileActionStatus,
+            `✔️ File #${fileId}: ${result.message}`,
+            true
+          );
+          await loadFiles(); // reload Files table only
         } catch (error) {
-            showStatus(uploadStatus, `Error: ${error.message}`, false);
+          showStatus(fileActionStatus, `❌ ${error.message}`, false);
+        } finally {
+          hideLoader();
+          // Re-enable (in case the row is still present; otherwise row reload will re-render)
+          validateBtn.disabled = false;
         }
+      });
     });
 
-    refreshFilesButton.addEventListener('click', loadFiles);
-    refreshReceiptsButton.addEventListener('click', loadReceipts);
+    document.querySelectorAll('.process-btn').forEach((button) => {
+      button.addEventListener('click', async (e) => {
+        const processBtn = e.target;
+        const fileId = processBtn.dataset.id;
 
-    closeButton.onclick = function() {
-        modal.style.display = "none";
-    }
-    window.onclick = function(event) {
-        if (event.target == modal) {
-            modal.style.display = "none";
-        }
-    }
+        showLoader();
+        showStatus(
+          fileActionStatus,
+          `Processing file #${fileId}… this may take a moment.`,
+          true
+        );
+        processBtn.disabled = true;
+        processBtn.textContent = 'Processing…';
 
-    // --- Data Loading Functions ---
-    async function loadFiles() {
-        showStatus(fileActionStatus, 'Loading files...', true);
         try {
-            const response = await fetch('http://127.0.0.1:3000/api/files');
-            if (!response.ok) throw new Error('Failed to fetch files');
-            const files = await response.json();
-            
-            filesTableBody.innerHTML = ''; // Clear existing rows
-            if (files.length === 0) {
-                filesTableBody.innerHTML = '<tr><td colspan="5">No files uploaded yet.</td></tr>';
-                showStatus(fileActionStatus, 'No files found.', true);
-                return;
+          const response = await fetch(
+            `http://127.0.0.1:3000/api/process/${fileId}`,
+            { method: 'POST' }
+          );
+          const result = await response.json();
+          if (!response.ok) {
+            let errorMessage = result.message || `Processing failed for ${fileId}`;
+            if (result.error) errorMessage += ` Details: ${result.error}`;
+            if (result.rawResponse) {
+              errorMessage += ` Raw AI Response: ${result.rawResponse
+                .substring(0, 200)
+                .trim()}…`;
             }
-            files.forEach(file => {
-                const row = filesTableBody.insertRow();
-                row.innerHTML = `
-                    <td>${file.id}</td>
-                    <td>${file.file_name}</td>
-                    <td>${file.is_valid ? 'Valid PDF' : (file.invalid_reason || 'Not Validated')}</td>
-                    <td>${file.is_processed ? 'Yes' : 'No'}</td>
-                    <td>
-                        <button class="action-button validate-btn" data-id="${file.id}" ${file.is_valid ? 'disabled title="Already Valid"' : ''}>Validate</button>
-                        <button class="action-button process-btn" data-id="${file.id}" ${!file.is_valid || file.is_processed ? 'disabled' : ''} title="${!file.is_valid ? 'Validate first' : (file.is_processed ? 'Already Processed' : 'Process File')}">Process</button>
-                    </td>
-                `;
-            });
-            showStatus(fileActionStatus, 'Files loaded.', true);
-            attachActionListeners();
+            throw new Error(errorMessage);
+          }
+          showStatus(
+            fileActionStatus,
+            `✔️ File #${fileId}: ${result.message}`,
+            true
+          );
+          await loadFiles();     // reload Files
+          await loadReceipts();  // reload Receipts
         } catch (error) {
-            showStatus(fileActionStatus, `Error loading files: ${error.message}`, false);
-            filesTableBody.innerHTML = `<tr><td colspan="5">Error loading files.</td></tr>`;
+          showStatus(fileActionStatus, `❌ ${error.message}`, false);
+        } finally {
+          hideLoader();
+          processBtn.disabled = false;
+          processBtn.textContent = 'Process';
         }
-    }
+      });
+    });
+  }
 
-    async function loadReceipts() {
+  // ─── ATTACH “VIEW DETAILS” LISTENERS FOR RECEIPTS ─────────
+  function attachReceiptActionListeners() {
+    document.querySelectorAll('.view-details-btn').forEach((button) => {
+      button.addEventListener('click', async (e) => {
+        const viewBtn = e.target;
+        const receiptId = viewBtn.dataset.id;
+
+        showLoader();
+        viewBtn.disabled = true;
+
         try {
-            const response = await fetch('http://127.0.0.1:3000/api/receipts');
-             if (!response.ok) throw new Error('Failed to fetch receipts');
-            const receipts = await response.json();
-            
-            receiptsTableBody.innerHTML = ''; // Clear existing rows
-             if (receipts.length === 0) {
-                receiptsTableBody.innerHTML = '<tr><td colspan="6">No receipts processed yet.</td></tr>';
-                return;
-            }
-            receipts.forEach(receipt => {
-                const row = receiptsTableBody.insertRow();
-                const purchasedDate = receipt.purchased_at ? new Date(receipt.purchased_at).toLocaleString() : 'N/A';
-                row.innerHTML = `
-                    <td>${receipt.id}</td>
-                    <td>${receipt.merchant_name || 'N/A'}</td>
-                    <td>${purchasedDate}</td>
-                    <td>${receipt.total_amount !== null ? receipt.total_amount.toFixed(2) : 'N/A'}</td>
-                    <td>${receipt.original_file_name || 'N/A'}</td>
-                    <td><button class="action-button view-details-btn" data-id="${receipt.id}">View JSON</button></td>
-                `;
+          const response = await fetch(
+            `http://127.0.0.1:3000/api/receipts/${receiptId}`
+          );
+          if (!response.ok) throw new Error('Failed to fetch receipt details.');
+          const receiptDetails = await response.json();
+
+          // Populate modal summary (merchant, date, amount)
+          const purchasedDate = receiptDetails.purchased_at
+            ? new Date(receiptDetails.purchased_at).toLocaleString()
+            : 'N/A';
+          modalSummary.innerHTML = `
+            <p><strong>Merchant:</strong> ${receiptDetails.merchant_name || 'N/A'}</p>
+            <p><strong>Date:</strong> ${purchasedDate}</p>
+            <p><strong>Total Amount:</strong> ${
+              receiptDetails.total_amount !== null
+                ? receiptDetails.total_amount.toFixed(2)
+                : 'N/A'
+            }</p>
+          `;
+
+          // Parse items array (JSON string → array of objects)
+          let itemsArray = [];
+          try {
+            itemsArray = JSON.parse(receiptDetails.items || '[]');
+          } catch {
+            itemsArray = [];
+          }
+
+          // Build items table if any items exist
+          if (itemsArray.length > 0) {
+            let tableHTML = `
+              <h6 class="mb-2">Itemized Details:</h6>
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                  <thead class="table-secondary">
+                    <tr>
+                      <th>Name</th>
+                      <th>Price</th>
+                      <th>Quantity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+            `;
+            itemsArray.forEach((itemObj) => {
+              const name = itemObj.name || 'N/A';
+              const price = (itemObj.price !== undefined && itemObj.price !== null)
+                ? itemObj.price.toFixed(2)
+                : 'N/A';
+              const quantity = itemObj.quantity || 'N/A';
+              tableHTML += `
+                <tr>
+                  <td>${name}</td>
+                  <td>${price}</td>
+                  <td>${quantity}</td>
+                </tr>
+              `;
             });
-            attachReceiptActionListeners();
+            tableHTML += `
+                  </tbody>
+                </table>
+              </div>
+            `;
+            itemsTableContainer.innerHTML = tableHTML;
+          } else {
+            itemsTableContainer.innerHTML = `<p class="text-muted">No item details available.</p>`;
+          }
+
+          // Show the raw JSON in the <pre>
+          modalData.textContent = JSON.stringify(receiptDetails, null, 2);
+          bootstrapModalInstance.show();
         } catch (error) {
-            console.error('Error loading receipts:', error);
-            receiptsTableBody.innerHTML = `<tr><td colspan="6">Error loading receipts.</td></tr>`;
+          alert(`Error fetching details: ${error.message}`);
+        } finally {
+          hideLoader();
+          viewBtn.disabled = false;
         }
-    }
-    
-    // --- Attach Event Listeners for Dynamic Buttons ---
-    function attachActionListeners() {
-        document.querySelectorAll('.validate-btn').forEach(button => {
-            button.addEventListener('click', async (e) => {
-                const fileId = e.target.dataset.id;
-                showStatus(fileActionStatus, `Validating file ID ${fileId}...`, true);
-                try {
-                    const response = await fetch(`http://127.0.0.1:3000/api/validate/${fileId}`, { method: 'POST' });
-                    const result = await response.json();
-                    if (!response.ok) throw new Error(result.message || `Validation failed for ${fileId}`);
-                    showStatus(fileActionStatus, `File ID ${fileId}: ${result.message}`, true);
-                    loadFiles(); // Refresh list
-                } catch (error) {
-                    showStatus(fileActionStatus, `Error: ${error.message}`, false);
-                }
-            });
-        });
+      });
+    });
+  }
 
-        document.querySelectorAll('.process-btn').forEach(button => {
-            button.addEventListener('click', async (e) => {
-                const fileId = e.target.dataset.id;
-                showStatus(fileActionStatus, `Processing file ID ${fileId}... This may take a moment.`, true);
-                e.target.disabled = true; // Disable button during processing
-                e.target.textContent = 'Processing...';
+  // ─── ATTACH “DELETE” LISTENERS FOR RECEIPTS ─────────────────
+  function attachDeleteListeners() {
+    document.querySelectorAll('.delete-receipt-btn').forEach((button) => {
+      button.addEventListener('click', async (e) => {
+        const deleteBtn = e.target;
+        const receiptId = deleteBtn.dataset.id;
+        const confirmed = confirm(
+          `Are you sure you want to delete receipt #${receiptId}? This also removes its file entry.`
+        );
+        if (!confirmed) return;
 
-                try {
-                    const response = await fetch(`http://127.0.0.1:3000/api/process/${fileId}`, { method: 'POST' });
-                    const result = await response.json();
-                    if (!response.ok) {
-                         // Try to get more details from the error if available
-                        let errorMessage = result.message || `Processing failed for ${fileId}`;
-                        if (result.error) errorMessage += ` Details: ${result.error}`;
-                        if (result.rawResponse) errorMessage += ` Raw AI Response: ${result.rawResponse.substring(0, 200)}...`;
-                        throw new Error(errorMessage);
-                    }
-                    showStatus(fileActionStatus, `File ID ${fileId}: ${result.message}`, true);
-                    loadFiles(); // Refresh file list
-                    loadReceipts(); // Refresh receipt list
-                } catch (error) {
-                    showStatus(fileActionStatus, `Error: ${error.message}`, false);
-                } finally {
-                    // Re-enable button or update its state based on the new file list
-                    // For simplicity, loadFiles() will redraw buttons with correct states.
-                    // If you want to target this specific button, you'd need to re-query it or pass the element.
-                    loadFiles(); // This will correctly set button states
-                }
-            });
-        });
-    }
+        showLoader();
+        deleteBtn.disabled = true;
 
-    function attachReceiptActionListeners() {
-        document.querySelectorAll('.view-details-btn').forEach(button => {
-            button.addEventListener('click', async (e) => {
-                const receiptId = e.target.dataset.id;
-                try {
-                    const response = await fetch(`http://127.0.0.1:3000/api/receipts/${receiptId}`);
-                    if (!response.ok) throw new Error('Failed to fetch receipt details');
-                    const receiptDetails = await response.json();
-                    modalData.textContent = JSON.stringify(receiptDetails, null, 2);
-                    modal.style.display = "block";
-                } catch (error) {
-                    alert(`Error fetching details: ${error.message}`);
-                }
-            });
-        });
-    }
+        try {
+          const response = await fetch(
+            `http://127.0.0.1:3000/api/receipts/${receiptId}`,
+            { method: 'DELETE' }
+          );
+          const result = await response.json();
+          if (!response.ok) {
+            throw new Error(result.message || 'Delete failed');
+          }
+          alert(`✔️ ${result.message}`);
+          await loadReceipts();  // reload Receipts table
+          await loadFiles();     // also reload Files table
+        } catch (error) {
+          alert(`❌ Error deleting receipt: ${error.message}`);
+        } finally {
+          hideLoader();
+          deleteBtn.disabled = false;
+        }
+      });
+    });
+  }
 
-    // --- Initial Load ---
-    loadFiles();
-    loadReceipts();
+  // ─── SEARCH FILTER FOR TABLES ─────────────────────────────
+  function filterTableRows(inputElem, tableBody) {
+    const query = inputElem.value.trim().toLowerCase();
+    Array.from(tableBody.rows).forEach((row) => {
+      const rowText = row.textContent.toLowerCase();
+      row.style.display = rowText.includes(query) ? '' : 'none';
+    });
+  }
+  filesSearchInput.addEventListener('input', () => {
+    filterTableRows(filesSearchInput, filesTableBody);
+  });
+  receiptsSearchInput.addEventListener('input', () => {
+    filterTableRows(receiptsSearchInput, receiptsTableBody);
+  });
+
+  // ─── INITIAL DATA LOAD ─────────────────────────────────────
+  loadFiles();
+  loadReceipts();
 });
