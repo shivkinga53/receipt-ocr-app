@@ -1,4 +1,6 @@
 .env
 /node_modules
 *.pdf
+temp
+uploads
 receipts.db
