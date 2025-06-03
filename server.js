@@ -40,7 +40,6 @@ function resetFolder(folderPath) {
 
 // On server start, clear both temp and uploads:
 resetFolder(TEMP_DIR);
-resetFolder(UPLOAD_DIR);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Multer setup: store uploads **temporarily** in ./temp, keep original filename
@@ -64,9 +63,11 @@ const upload = multer({ storage, fileFilter });
 
 app.use(express.json());
 app.use(cors());
+
 // Serve static so that final uploads (and temp, if ever needed) can be downloaded
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use(express.static(path.join(__dirname, "public")));
-app.use("/uploads", express.static(UPLOAD_DIR));
+
 // Note: we do NOT expose /temp via static—PDFs in temp are only used server‐side
 
 const apiKey = process.env.GEMINI_API_KEY;

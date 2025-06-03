@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const formData = new FormData();
       formData.append('receiptPdf', receiptFileInput.files[0]);
 
-      const response = await fetch('http://127.0.0.1:3000/api/upload', {
+      const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
@@ -141,7 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showStatus(fileActionStatus, 'Loading files…', true);
 
     try {
-      const response = await fetch('http://127.0.0.1:3000/api/files');
+      const response = await fetch('/api/files');
       if (!response.ok) throw new Error('Failed to fetch files.');
       const files = await response.json();
 
@@ -155,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       files.forEach((file) => {
         const row = filesTableBody.insertRow();
-        const downloadUrl = `http://127.0.0.1:3000/${file.file_path}`;
+        const downloadUrl = `/${file.file_path}`;
         row.innerHTML = `
           <td>${file.id}</td>
           <td>${file.file_name}</td>
@@ -210,7 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showLoader();
 
     try {
-      const response = await fetch('http://127.0.0.1:3000/api/receipts');
+      const response = await fetch('/api/receipts');
       if (!response.ok) throw new Error('Failed to fetch receipts.');
       const receipts = await response.json();
 
@@ -226,8 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const purchasedDate = receipt.purchased_at
           ? new Date(receipt.purchased_at).toLocaleString()
           : 'N/A';
-        const downloadUrl = `http://127.0.0.1:3000/${receipt.file_path}`;
-        console.log(receipt);
+        const downloadUrl = `/${receipt.file_path}`;
         
         row.innerHTML = `
           <td>${receipt.id}</td>
@@ -287,7 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
           const response = await fetch(
-            `http://127.0.0.1:3000/api/validate/${fileId}`,
+            `/api/validate/${fileId}`,
             { method: 'POST' }
           );
           const result = await response.json();
@@ -327,7 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
           const response = await fetch(
-            `http://127.0.0.1:3000/api/process/${fileId}`,
+            `/api/process/${fileId}`,
             { method: 'POST' }
           );
           const result = await response.json();
@@ -371,7 +370,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
           const response = await fetch(
-            `http://127.0.0.1:3000/api/receipts/${receiptId}`
+            `/api/receipts/${receiptId}`
           );
           if (!response.ok) throw new Error('Failed to fetch receipt details.');
           const receiptDetails = await response.json();
@@ -466,7 +465,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
           const response = await fetch(
-            `http://127.0.0.1:3000/api/receipts/${receiptId}`,
+            `/api/receipts/${receiptId}`,
             { method: 'DELETE' }
           );
           const result = await response.json();
